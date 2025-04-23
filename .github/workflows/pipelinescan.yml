@@ -1,59 +1,73 @@
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
-
-# This workflow will initiate a Veracode Static Analysis Pipeline scan, return a results.json and convert to SARIF for upload as a code scanning alert
-
 name: Veracode Static Analysis Pipeline Scan
 
+# 🚀 Quando esse workflow será executado?
 on:
-  push:
+  push:                 # Quando algo for enviado (push) para a branch "main"
     branches: [ "main" ]
-  pull_request:
-    # The branches below must be a subset of the branches above
+  pull_request:         # Quando houver um pull request para a branch "main"
     branches: [ "main" ]
-  schedule:
+  schedule:             # E também todo domingo às 2:41 da manhã (para varredura periódica)
     - cron: '41 2 * * 0'
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+# 🔐 Permissões básicas para acessar o repositório e criar alertas de segurança
 permissions:
   contents: read
 
 jobs:
-  # This workflow contains a job to build and submit pipeline scan, you will need to customize the build process accordingly and make sure the artifact you build is used as the file input to the pipeline scan file parameter
   build-and-pipeline-scan:
-    # The type of runner that the job will run on
+    # 📋 Permissões específicas para este job
     permissions:
-      contents: read # for actions/checkout to fetch code
-      security-events: write # for github/codeql-action/upload-sarif to upload SARIF results
-      actions: read # only required for a private repository by github/codeql-action/upload-sarif to get the Action run status
+      contents: read                      # Permite ler o conteúdo do repositório
+      security-events: write              # Permite criar alertas de segurança (como Code Scanning)
+      actions: read                       # Necessário em repositórios privados para buscar ações
+
+    # 🧠 Ambiente que será usado: um servidor Ubuntu na nuvem
     runs-on: ubuntu-latest
+
     steps:
+      # 📥 1. Baixa os arquivos do seu repositório para o ambiente de execução
+      - uses: actions/checkout@v4
+        with:
+          repository: ''
 
-    # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it and copies all sources into ZIP file for submitting for analysis. Replace this section with your applications build steps
-    - uses: actions/checkout@v4
-      with:
-        repository: ''
+      # 🗜️ 2. Compacta todos os arquivos do projeto em um ZIP para análise
+      - run: zip -r veracode-scan-target.zip ./
 
-    - run: zip -r veracode-scan-target.zip ./
+      # ⬇️ 3. Baixa o programa da Veracode que faz o scan de segurança (pipeline scan)
+      - run: curl --silent --show-error --fail -O https://downloads.veracode.com/securityscan/pipeline-scan-LATEST.zip
 
-    # download the Veracode Static Analysis Pipeline scan jar
-    - run: curl --silent --show-error --fail -O https://downloads.veracode.com/securityscan/pipeline-scan-LATEST.zip
-    - run: unzip -o pipeline-scan-LATEST.zip
+      # 📂 4. Descompacta o programa da Veracode que acabou de ser baixado
+      - run: unzip -o pipeline-scan-LATEST.zip
 
-    - uses: actions/setup-java@v4
-      with:
-        java-version: 8
-        distribution: 'temurin'
-    - run: java -jar pipeline-scan.jar --veracode_api_id "${{secrets.VERACODE_API_ID}}" --veracode_api_key "${{secrets.VERACODE_API_KEY}}" --fail_on_severity="Very High, High" --file veracode-scan-target.zip
-      continue-on-error: true
-    - name: Convert pipeline scan output to SARIF format
-      id: convert
-      uses: veracode/veracode-pipeline-scan-results-to-sarif@ff08ae5b45d5384cb4679932f184c013d34da9be
-      with:
-        pipeline-results-json: results.json
-    - uses: github/codeql-action/upload-sarif@v3
-      with:
-        # Path to SARIF file relative to the root of the repository
-        sarif_file: veracode-results.sarif
+      # ☕ 5. Instala o Java (necessário para rodar o programa da Veracode)
+      - uses: actions/setup-java@v4
+        with:
+          java-version: 8                # Você pode mudar essa versão se seu projeto usar outro Java
+          distribution: 'temurin'
+
+      # 🔍 6. Executa o scan da Veracode no arquivo compactado, buscando falhas de segurança
+      - run: java -jar pipeline-scan.jar --veracode_api_id "${{secrets.VERACODE_API_ID}}" --veracode_api_key "${{secrets.VERACODE_API_KEY}}" --fail_on_severity="Very High, High" --file veracode-scan-target.zip
+        continue-on-error: true          # Mesmo que o scan encontre falhas, o workflow continua (importante para permitir os próximos passos)
+
+      # 🔁 7. Converte o resultado do scan para o formato SARIF (usado pelo GitHub para exibir alertas visuais)
+      - name: Convert pipeline scan output to SARIF format
+        id: convert
+        uses: veracode/veracode-pipeline-scan-results-to-sarif@ff08ae5b45d5384cb4679932f184c013d34da9be
+        with:
+          pipeline-results-json: results.json   # Esse é o arquivo gerado pelo scan
+
+      # ☁️ 8. Envia os resultados convertidos para a aba "Code scanning" do GitHub
+      - uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: veracode-results.sarif
+
+      # 🛠️ 9. (NOVO) Usa o Veracode Fix para sugerir correções automáticas para as vulnerabilidades encontradas
+      - name: Veracode Fix - Sugestões automáticas de correções
+        uses: veracode/veracode-fix@v1.0.4
+        with:
+          scan-results-json: results.json       # O mesmo arquivo do scan que contém os problemas detectados
+          github-token: ${{ secrets.GITHUB_TOKEN }}  # Token do GitHub usado para poder comentar no PR ou fazer commits
+
+          # 🔧 (Opcional) Ative essas opções se quiser que o Veracode Fix já crie issues ou commits automáticos:
+          # create-issues: true
+          # commit-fixes: true
