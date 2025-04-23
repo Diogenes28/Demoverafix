@@ -7,9 +7,9 @@ on:
   pull_request:
     branches: [ "main" ]
   schedule:
-    - cron: '41 2 * * 0'  # Todo domingo às 2:41 da manhã
+    - cron: '41 2 * * 0'
 
-# 🔐 Permissões básicas
+# 🔐 Permissões básicas para acessar o repositório e criar alertas de segurança
 permissions:
   contents: read
 
@@ -19,53 +19,78 @@ jobs:
       contents: read
       security-events: write
       actions: read
-
     runs-on: ubuntu-latest
 
     steps:
-      # 📥 1. Clona o repositório
       - uses: actions/checkout@v4
         with:
           repository: ''
 
-      # 🗜️ 2. Compacta os arquivos do projeto
       - run: zip -r veracode-scan-target.zip ./
 
-      # ⬇️ 3. Baixa o programa da Veracode
       - run: curl --silent --show-error --fail -O https://downloads.veracode.com/securityscan/pipeline-scan-LATEST.zip
 
-      # 📂 4. Descompacta o pipeline scan
       - run: unzip -o pipeline-scan-LATEST.zip
 
-      # ☕ 5. Instala Java
       - uses: actions/setup-java@v4
         with:
           java-version: 8
           distribution: 'temurin'
 
-      # 🔍 6. Executa o scan de segurança
       - run: java -jar pipeline-scan.jar --veracode_api_id "${{secrets.VERACODE_API_ID}}" --veracode_api_key "${{secrets.VERACODE_API_KEY}}" --fail_on_severity="Very High, High" --file veracode-scan-target.zip
         continue-on-error: true
 
-      # 🔁 7. Converte resultados para SARIF
       - name: Convert pipeline scan output to SARIF format
         id: convert
         uses: veracode/veracode-pipeline-scan-results-to-sarif@ff08ae5b45d5384cb4679932f184c013d34da9be
         with:
           pipeline-results-json: results.json
 
-      # ☁️ 8. Envia resultados para a aba Code Scanning
       - uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: veracode-results.sarif
 
-      # 🛠️ 9. Veracode Fix: sugestões automáticas de correção
       - name: Veracode Fix - Sugestões automáticas de correções
         uses: veracode/veracode-fix@v1.0.3
         with:
-          vid: ${{ secrets.VERACODE_API_ID }}              # ID da API Veracode
-          vkey: ${{ secrets.VERACODE_API_KEY }}            # Chave da API Veracode
-          inputFile: results.json                          # Arquivo de entrada com os resultados
-          token: ${{ secrets.GITHUB_TOKEN }}               # Token do GitHub
-          createPR: true                                   # Cria Pull Request com as correções
-          prComment: true                                  # Adiciona comentários no PR com detalhes
+          token: ${{ secrets.GITHUB_TOKEN }}
+          inputFile: results.json
+
+      - name: Criar issues a partir do results.json
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const results = JSON.parse(fs.readFileSync('results.json', 'utf8'));
+
+            if (!results.findings || results.findings.length === 0) {
+              console.log("Nenhuma vulnerabilidade encontrada.");
+              return;
+            }
+
+            for (const finding of results.findings.slice(0, 5)) {
+              const file = finding.file;
+              const severity = finding.severity;
+              const cwe = finding.cwe?.name || 'CWE desconhecido';
+              const description = finding.description || 'Sem descrição disponível.';
+              const recommendation = finding.recommendation || 'Sem recomendação.';
+
+              const issueTitle = `[${severity}] Vulnerabilidade detectada em ${file}`;
+              const issueBody = `
+**Arquivo:** \`${file}\`
+
+**Gravidade:** ${severity}  
+**Descrição:** ${description}  
+**CWE:** ${cwe}  
+**Recomendação:** ${recommendation}
+
+_Gerado automaticamente pelo Veracode Fix + GitHub Actions_
+              `;
+
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: issueTitle,
+                body: issueBody,
+              });
+            }
