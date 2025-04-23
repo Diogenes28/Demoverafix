@@ -5,27 +5,27 @@ jobs:
   static_analysis:
     name: Static Analysis
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Check out main branch
         uses: actions/checkout@v3
-        
-      - name: Cache Maven dependencies
+
+      - name: Cache Maven dependencies # Acelera builds reutilizando dependências já baixadas
         uses: actions/cache@v2
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
-        
+
       - name: Build with Maven
         run: mvn -X -B package --file app/pom.xml
-          
+
       - name: Veracode Upload And Scan
         uses: veracode/veracode-uploadandscan-action@0.2.7
         with:
           appname: 'Demoverafix'
           createprofile: true                      # Cria o perfil da aplicação se ainda não existir
-          filepath: 'target/verademo.war'
+          filepath: 'app/target/verademo.war'      # Corrigido: caminho correto para o .war
           vid: '${{ secrets.VERACODE_API_ID }}'
           vkey: '${{ secrets.VERACODE_API_KEY }}'
