@@ -63,7 +63,7 @@ jobs:
 
       # 🛠️ 9. (NOVO) Usa o Veracode Fix para sugerir correções automáticas para as vulnerabilidades encontradas
       - name: Veracode Fix - Sugestões automáticas de correções
-        uses: veracode/veracode-fix@v1.0.4
+        uses: veracode/veracode-fix@v1.0.3
         with:
           scan-results-json: results.json       # O mesmo arquivo do scan que contém os problemas detectados
           github-token: ${{ secrets.GITHUB_TOKEN }}  # Token do GitHub usado para poder comentar no PR ou fazer commits
