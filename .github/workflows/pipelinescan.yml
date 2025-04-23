@@ -2,78 +2,70 @@ name: Veracode Static Analysis Pipeline Scan
 
 # 🚀 Quando esse workflow será executado?
 on:
-  push:                 # Quando algo for enviado (push) para a branch "main"
+  push:
     branches: [ "main" ]
-  pull_request:         # Quando houver um pull request para a branch "main"
+  pull_request:
     branches: [ "main" ]
-  schedule:             # E também todo domingo às 2:41 da manhã (para varredura periódica)
-    - cron: '41 2 * * 0'
+  schedule:
+    - cron: '41 2 * * 0'  # Todo domingo às 2:41 da manhã
 
-# 🔐 Permissões básicas para acessar o repositório e criar alertas de segurança
+# 🔐 Permissões básicas
 permissions:
   contents: read
 
 jobs:
   build-and-pipeline-scan:
-    # 📋 Permissões específicas para este job
     permissions:
-      contents: read                      # Permite ler o conteúdo do repositório
-      security-events: write              # Permite criar alertas de segurança (como Code Scanning)
-      actions: read                       # Necessário em repositórios privados para buscar ações
+      contents: read
+      security-events: write
+      actions: read
 
-    # 🧠 Ambiente que será usado: um servidor Ubuntu na nuvem
     runs-on: ubuntu-latest
 
     steps:
-      # 📥 1. Baixa os arquivos do seu repositório para o ambiente de execução
+      # 📥 1. Clona o repositório
       - uses: actions/checkout@v4
         with:
           repository: ''
 
-      # 🗜️ 2. Compacta todos os arquivos do projeto em um ZIP para análise
+      # 🗜️ 2. Compacta os arquivos do projeto
       - run: zip -r veracode-scan-target.zip ./
 
-      # ⬇️ 3. Baixa o programa da Veracode que faz o scan de segurança (pipeline scan)
+      # ⬇️ 3. Baixa o programa da Veracode
       - run: curl --silent --show-error --fail -O https://downloads.veracode.com/securityscan/pipeline-scan-LATEST.zip
 
-      # 📂 4. Descompacta o programa da Veracode que acabou de ser baixado
+      # 📂 4. Descompacta o pipeline scan
       - run: unzip -o pipeline-scan-LATEST.zip
 
-      # ☕ 5. Instala o Java (necessário para rodar o programa da Veracode)
+      # ☕ 5. Instala Java
       - uses: actions/setup-java@v4
         with:
-          java-version: 8                # Você pode mudar essa versão se seu projeto usar outro Java
+          java-version: 8
           distribution: 'temurin'
 
-      # 🔍 6. Executa o scan da Veracode no arquivo compactado, buscando falhas de segurança
+      # 🔍 6. Executa o scan de segurança
       - run: java -jar pipeline-scan.jar --veracode_api_id "${{secrets.VERACODE_API_ID}}" --veracode_api_key "${{secrets.VERACODE_API_KEY}}" --fail_on_severity="Very High, High" --file veracode-scan-target.zip
-        continue-on-error: true          # Mesmo que o scan encontre falhas, o workflow continua (importante para permitir os próximos passos)
+        continue-on-error: true
 
-      # 🔁 7. Converte o resultado do scan para o formato SARIF (usado pelo GitHub para exibir alertas visuais)
+      # 🔁 7. Converte resultados para SARIF
       - name: Convert pipeline scan output to SARIF format
         id: convert
         uses: veracode/veracode-pipeline-scan-results-to-sarif@ff08ae5b45d5384cb4679932f184c013d34da9be
         with:
-          pipeline-results-json: results.json   # Esse é o arquivo gerado pelo scan
+          pipeline-results-json: results.json
 
-      # ☁️ 8. Envia os resultados convertidos para a aba "Code scanning" do GitHub
+      # ☁️ 8. Envia resultados para a aba Code Scanning
       - uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: veracode-results.sarif
 
-      # 🛠️ 9. (NOVO) Usa o Veracode Fix para sugerir correções automáticas para as vulnerabilidades encontradas
+      # 🛠️ 9. Veracode Fix: sugestões automáticas de correção
       - name: Veracode Fix - Sugestões automáticas de correções
         uses: veracode/veracode-fix@v1.0.3
         with:
-          scan-results-json: results.json       # O mesmo arquivo do scan que contém os problemas detectados
-          github-token: ${{ secrets.GITHUB_TOKEN }}  # Token do GitHub usado para poder comentar no PR ou fazer commits
-          create-issues: true
-          # 🔧 (Opcional) Ative essas opções se quiser que o Veracode Fix já crie issues ou commits automáticos:
-          # create-issues: true  # Se você ativar a opção, o Veracode Fix pode abrir automaticamente uma issue no GitHub, dizendo algo como:
-                                 # Título: Vulnerabilidade detectada no arquivo Login.java 
-                                 # Descrição: O código contém uma falha de segurança do tipo Cross-Site Scripting (XSS) 
-                                 # Solução sugerida: Escapar os dados do usuário com uma função segura.
-         
-          # commit-fixes: true   # Se você ativar a opção, o Veracode Fix pode fazer a correção no código automaticamente e criar um commit no repositório com essa mudança.
-                                # Exemplo: Commit criado pelo Veracode Fix:
-                                   # fix: correção automática de SQL Injection no LoginController.java
+          vid: ${{ secrets.VERACODE_API_ID }}              # ID da API Veracode
+          vkey: ${{ secrets.VERACODE_API_KEY }}            # Chave da API Veracode
+          inputFile: results.json                          # Arquivo de entrada com os resultados
+          token: ${{ secrets.GITHUB_TOKEN }}               # Token do GitHub
+          createPR: true                                   # Cria Pull Request com as correções
+          prComment: true                                  # Adiciona comentários no PR com detalhes
