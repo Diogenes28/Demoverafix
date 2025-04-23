@@ -11,7 +11,7 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Cache Maven dependencies # Acelera builds reutilizando dependências já baixadas
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
