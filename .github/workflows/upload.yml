@@ -25,7 +25,7 @@ jobs:
         uses: veracode/veracode-uploadandscan-action@0.2.7
         with:
           appname: 'Demoverafix'
-          createprofile: true                       # Cria o perfil da aplicação se ainda não existir
+          createprofile: true                      # Cria o perfil da aplicação se ainda não existir
           filepath: 'target/verademo.war'
           vid: '${{ secrets.VERACODE_API_ID }}'
           vkey: '${{ secrets.VERACODE_API_KEY }}'
