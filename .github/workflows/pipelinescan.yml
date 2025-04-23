@@ -67,7 +67,13 @@ jobs:
         with:
           scan-results-json: results.json       # O mesmo arquivo do scan que contém os problemas detectados
           github-token: ${{ secrets.GITHUB_TOKEN }}  # Token do GitHub usado para poder comentar no PR ou fazer commits
-
+          create-issues: true
           # 🔧 (Opcional) Ative essas opções se quiser que o Veracode Fix já crie issues ou commits automáticos:
-          # create-issues: true
-          # commit-fixes: true
+          # create-issues: true  # Se você ativar a opção, o Veracode Fix pode abrir automaticamente uma issue no GitHub, dizendo algo como:
+                                 # Título: Vulnerabilidade detectada no arquivo Login.java 
+                                 # Descrição: O código contém uma falha de segurança do tipo Cross-Site Scripting (XSS) 
+                                 # Solução sugerida: Escapar os dados do usuário com uma função segura.
+         
+          # commit-fixes: true   # Se você ativar a opção, o Veracode Fix pode fazer a correção no código automaticamente e criar um commit no repositório com essa mudança.
+                                # Exemplo: Commit criado pelo Veracode Fix:
+                                   # fix: correção automática de SQL Injection no LoginController.java
